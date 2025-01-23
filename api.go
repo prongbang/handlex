@@ -96,6 +96,13 @@ func (h *apiHandler[RequestInfo, RequestOption]) bodyParserIfRequired(c *fiber.C
 		return false, h.apiResponseHandler.ResponseError(c, requestOption, err)
 	}
 
+	if IsMultipartForm(c) {
+		err = MultipartBodyParser(c, requestPtr)
+		if err != nil {
+			return false, h.apiResponseHandler.ResponseError(c, requestOption, err)
+		}
+	}
+
 	return true, nil
 }
 
