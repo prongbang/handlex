@@ -1,7 +1,3 @@
-## Basic Usage
-Full Example [example](example)
-
-```go
 package main
 
 import (
@@ -109,7 +105,6 @@ func NewApiResponseHandler() fibercore.ApiResponseHandler[RequestOption] {
 	})
 	return apiResponseHandler
 }
-
 func NewNewApiHandler() fibercore.ApiHandler[RequestInfo, RequestOption] {
 	return fibercore.NewApiHandler[RequestInfo, RequestOption](NewApiResponseHandler(), &fibercore.ApiHandlerOptions[RequestInfo, RequestOption]{
 		OnBefore: func(c *fiber.Ctx, requestOption *RequestOption) error {
@@ -170,11 +165,3 @@ func main() {
 		log.Fatal(err)
 	}
 }
-
-
-```
-
-
-Buy Me a Coffee
-=======
-[!["Buy Me A Coffee"](https://www.buymeacoffee.com/assets/img/custom_images/orange_img.png)](https://www.buymeacoffee.com/dreamph)
