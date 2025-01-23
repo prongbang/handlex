@@ -11,6 +11,7 @@ import (
 	errs "github.com/pkg/errors"
 	"io"
 	"log"
+	"mime/multipart"
 	"time"
 )
 
@@ -130,6 +131,10 @@ func NewNewApiHandler() fibercore.ApiHandler[RequestInfo, RequestOption] {
 	})
 }
 
+type Upload struct {
+	File multipart.FileHeader `form:"file" multipart:"file"`
+}
+
 func main() {
 	apiHandler := NewNewApiHandler()
 	app := fiber.New()
@@ -165,11 +170,25 @@ func main() {
 		})
 	})
 
+	type Upload struct {
+		File *multipart.FileHeader `form:"file"`
+	}
+
+	app.Post("/upload", func(c *fiber.Ctx) error {
+		request := &Upload{}
+		return apiHandler.Do(c, request, nil, func(ctx context.Context, requestInfo *RequestInfo) (interface{}, error) {
+			return request.File.Filename, nil
+		})
+	})
+
 	err := app.Listen(":3000")
 	if err != nil {
 		log.Fatal(err)
 	}
 }
+
+//curl -v -F name=cenery -F file=@api.go http://localhost:3000/upload
+
 
 
 ```
