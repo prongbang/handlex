@@ -35,19 +35,19 @@ func WithRequestOptions[T any](opts ...RequestOptions[T]) *T {
 type DoFunc[RequestInfo any] func(ctx *Context[RequestInfo]) (interface{}, error)
 
 type apiHandler[Fw Framework, RequestInfo any, RequestOption any] struct {
-	apiResponseHandler ApiResponseHandler[Framework, RequestOption]
-	options            *ApiHandlerOptions[Framework, RequestInfo, RequestOption]
+	apiResponseHandler ApiResponseHandler[Fw, RequestOption]
+	options            *ApiHandlerOptions[Fw, RequestInfo, RequestOption]
 }
 
 type ApiHandlerOptions[Fw Framework, RequestInfo any, RequestOption any] struct {
 	RequestValidator RequestValidator
-	OnValidate       func(c Framework, requestOption *RequestOption, data any) error
-	OnBefore         func(c Framework, requestOption *RequestOption) error
-	GetRequestInfo   func(c Framework, requestOption *RequestOption) (*RequestInfo, error)
-	OnAfter          func(c Framework, requestOption *RequestOption) error
+	OnValidate       func(c Fw, requestOption *RequestOption, data any) error
+	OnBefore         func(c Fw, requestOption *RequestOption) error
+	GetRequestInfo   func(c Fw, requestOption *RequestOption) (*RequestInfo, error)
+	OnAfter          func(c Fw, requestOption *RequestOption) error
 }
 
-func NewApiHandler[Fw Framework, RequestInfo any, RequestOption any](apiResponseHandler ApiResponseHandler[Framework, RequestOption], options *ApiHandlerOptions[Framework, RequestInfo, RequestOption]) ApiHandler[Framework, RequestInfo, RequestOption] {
+func NewApiHandler[Fw Framework, RequestInfo any, RequestOption any](apiResponseHandler ApiResponseHandler[Fw, RequestOption], options *ApiHandlerOptions[Fw, RequestInfo, RequestOption]) ApiHandler[Fw, RequestInfo, RequestOption] {
 	return &apiHandler[Fw, RequestInfo, RequestOption]{
 		apiResponseHandler: apiResponseHandler,
 		options:            options,
@@ -55,10 +55,10 @@ func NewApiHandler[Fw Framework, RequestInfo any, RequestOption any](apiResponse
 }
 
 type ApiHandler[Fw Framework, RequestInfo any, RequestOption any] interface {
-	Do(c Framework, requestPtr interface{}, requestOption *RequestOption, doFunc DoFunc[RequestInfo]) error
+	Do(c Fw, requestPtr interface{}, requestOption *RequestOption, doFunc DoFunc[RequestInfo]) error
 }
 
-func (h *apiHandler[Framework, RequestInfo, RequestOption]) defaultRequestOptionIfNull(requestOption *RequestOption) *RequestOption {
+func (h *apiHandler[Fw, RequestInfo, RequestOption]) defaultRequestOptionIfNull(requestOption *RequestOption) *RequestOption {
 	if requestOption != nil {
 		return requestOption
 	}
@@ -67,7 +67,7 @@ func (h *apiHandler[Framework, RequestInfo, RequestOption]) defaultRequestOption
 	return &opt
 }
 
-func (h *apiHandler[Framework, RequestInfo, RequestOption]) Do(c Framework, requestPtr any, requestOption *RequestOption, doFunc DoFunc[RequestInfo]) error {
+func (h *apiHandler[Fw, RequestInfo, RequestOption]) Do(c Fw, requestPtr any, requestOption *RequestOption, doFunc DoFunc[RequestInfo]) error {
 	requestOption = h.defaultRequestOptionIfNull(requestOption)
 
 	err := h.options.OnBefore(c, requestOption)
@@ -105,7 +105,7 @@ func (h *apiHandler[Framework, RequestInfo, RequestOption]) Do(c Framework, requ
 	return h.apiResponseHandler.ResponseSuccess(c, requestOption, data)
 }
 
-func (h *apiHandler[Framework, RequestInfo, RequestOption]) bodyParserIfRequired(c Framework, requestOption *RequestOption, requestPtr any) (bool, error) {
+func (h *apiHandler[Fw, RequestInfo, RequestOption]) bodyParserIfRequired(c Fw, requestOption *RequestOption, requestPtr any) (bool, error) {
 	if c.Method() == http.MethodGet {
 		return false, nil
 	}
@@ -140,27 +140,27 @@ type Context[RequestInfo any] struct {
 }
 
 type ApiResponseHandlerOptions[Fw Framework, RequestOption any] struct {
-	ResponseSuccess func(c Framework, requestOption *RequestOption, data any) error
-	ResponseError   func(c Framework, requestOption *RequestOption, err error) error
+	ResponseSuccess func(c Fw, requestOption *RequestOption, data any) error
+	ResponseError   func(c Fw, requestOption *RequestOption, err error) error
 }
 
 type ApiResponseHandler[Fw Framework, RequestOption any] interface {
-	ResponseSuccess(c Framework, requestOption *RequestOption, data any) error
-	ResponseError(c Framework, requestOption *RequestOption, err error) error
+	ResponseSuccess(c Fw, requestOption *RequestOption, data any) error
+	ResponseError(c Fw, requestOption *RequestOption, err error) error
 }
 
 type responseHandler[Fw Framework, RequestOption any] struct {
-	options *ApiResponseHandlerOptions[Framework, RequestOption]
+	options *ApiResponseHandlerOptions[Fw, RequestOption]
 }
 
-func (r responseHandler[Framework, RequestOption]) ResponseError(c Framework, requestOption *RequestOption, err error) error {
+func (r responseHandler[Fw, RequestOption]) ResponseError(c Fw, requestOption *RequestOption, err error) error {
 	if r.options.ResponseError != nil {
 		return r.options.ResponseError(c, requestOption, err)
 	}
 	return c.SendString(http.StatusInternalServerError, err.Error())
 }
 
-func (r responseHandler[Framework, RequestOption]) ResponseSuccess(c Framework, requestOption *RequestOption, data any) error {
+func (r responseHandler[Fw, RequestOption]) ResponseSuccess(c Fw, requestOption *RequestOption, data any) error {
 	if r.options.ResponseSuccess != nil {
 		return r.options.ResponseSuccess(c, requestOption, data)
 	}
@@ -168,8 +168,8 @@ func (r responseHandler[Framework, RequestOption]) ResponseSuccess(c Framework, 
 	return c.JSON(data)
 }
 
-func NewApiResponseHandler[Fw Framework, RequestOption any](options *ApiResponseHandlerOptions[Framework, RequestOption]) ApiResponseHandler[Framework, RequestOption] {
-	return &responseHandler[Framework, RequestOption]{
+func NewApiResponseHandler[Fw Framework, RequestOption any](options *ApiResponseHandlerOptions[Fw, RequestOption]) ApiResponseHandler[Fw, RequestOption] {
+	return &responseHandler[Fw, RequestOption]{
 		options: options,
 	}
 }
