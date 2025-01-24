@@ -5,15 +5,55 @@ Full Example [example](example)
 package main
 
 import (
+	"context"
 	"fmt"
-	"github.com/dreamph/fibercore"
-	"github.com/gofiber/fiber/v2"
+	"github.com/dreamph/handlex"
 	errs "github.com/pkg/errors"
 	"io"
 	"log"
 	"mime/multipart"
 	"time"
 )
+
+type Fiber struct {
+	*fiber.Ctx
+}
+
+func (fcw *Fiber) Method() string {
+	return fcw.Ctx.Method()
+}
+
+func (fcw *Fiber) UserContext() context.Context {
+	return fcw.Ctx.UserContext()
+}
+
+func (fcw *Fiber) SendString(statusCode int, text string) error {
+	return fcw.Ctx.Status(statusCode).SendString(text)
+}
+
+func (fcw *Fiber) SendStream(stream io.Reader, size ...int) error {
+	return fcw.Ctx.SendStream(stream, size...)
+}
+
+func (fcw *Fiber) JSON(data interface{}) error {
+	return fcw.Ctx.JSON(data)
+}
+
+func (fcw *Fiber) BodyParser(out interface{}) error {
+	return fcw.Ctx.BodyParser(out)
+}
+
+func (fcw *Fiber) FormFile(key string) (*multipart.FileHeader, error) {
+	return fcw.Ctx.FormFile(key)
+}
+
+func (fcw *Fiber) Get(key string, defaultValue ...string) string {
+	return fcw.Ctx.Get(key, defaultValue...)
+}
+
+func (fcw *Fiber) Status(statusCode int) {
+	fcw.Ctx.Status(statusCode)
+}
 
 type RequestInfo struct {
 	Token string `json:"token"`
@@ -24,13 +64,13 @@ type RequestOption struct {
 	SuccessStatus  int
 }
 
-func EnableValidate(enable bool) fibercore.RequestOptions[RequestOption] {
+func EnableValidate(enable bool) handlex.RequestOptions[RequestOption] {
 	return func(opts *RequestOption) {
 		opts.EnableValidate = enable
 	}
 }
 
-func SuccessStatus(successStatus int) fibercore.RequestOptions[RequestOption] {
+func SuccessStatus(successStatus int) handlex.RequestOptions[RequestOption] {
 	return func(opts *RequestOption) {
 		opts.SuccessStatus = successStatus
 	}
@@ -74,11 +114,11 @@ func (e *AppError) Error() string {
 	return e.ErrCode + ":" + e.ErrMessage
 }
 
-func NewApiResponseHandler() fibercore.ApiResponseHandler[RequestOption] {
-	apiResponseHandler := fibercore.NewApiResponseHandler[RequestOption](&fibercore.ApiResponseHandlerOptions[RequestOption]{
-		ResponseSuccess: func(c *fiber.Ctx, requestOption *RequestOption, data any) error {
+func NewApiResponseHandler() handlex.ApiResponseHandler[handlex.Framework, RequestOption] {
+	apiResponseHandler := handlex.NewApiResponseHandler[handlex.Framework, RequestOption](&handlex.ApiResponseHandlerOptions[handlex.Framework, RequestOption]{
+		ResponseSuccess: func(c handlex.Framework, requestOption *RequestOption, data any) error {
 			if requestOption.SuccessStatus > 0 {
-				c = c.Status(requestOption.SuccessStatus)
+				c.Status(requestOption.SuccessStatus)
 			}
 
 			streamData, ok := data.(*StreamData)
@@ -91,7 +131,7 @@ func NewApiResponseHandler() fibercore.ApiResponseHandler[RequestOption] {
 			}
 			return c.JSON(data)
 		},
-		ResponseError: func(c *fiber.Ctx, requestOption *RequestOption, err error) error {
+		ResponseError: func(c handlex.Framework, requestOption *RequestOption, err error) error {
 			res := &ErrorResponse{
 				Status:     false,
 				StatusCode: 500,
@@ -104,29 +144,30 @@ func NewApiResponseHandler() fibercore.ApiResponseHandler[RequestOption] {
 				res.Message = appError.ErrMessage
 				res.StatusCode = 400
 			}
-
-			return c.Status(res.StatusCode).JSON(res)
+			c.Status(res.StatusCode)
+			return c.JSON(res)
 		},
 	})
 	return apiResponseHandler
 }
 
-func NewNewApiHandler() fibercore.ApiHandler[RequestInfo, RequestOption] {
-	return fibercore.NewApiHandler[RequestInfo, RequestOption](NewApiResponseHandler(), &fibercore.ApiHandlerOptions[RequestInfo, RequestOption]{
-		OnBefore: func(c *fiber.Ctx, requestOption *RequestOption) error {
+func NewNewApiHandler() handlex.ApiHandler[handlex.Framework, RequestInfo, RequestOption] {
+	responseHandler := NewApiResponseHandler()
+	return handlex.NewApiHandler[handlex.Framework, RequestInfo, RequestOption](responseHandler, &handlex.ApiHandlerOptions[handlex.Framework, RequestInfo, RequestOption]{
+		OnBefore: func(c handlex.Framework, requestOption *RequestOption) error {
 			log.Println("OnBefore")
 			if requestOption.EnableValidate {
 				log.Println("EnableValidate")
 			}
 			return nil
 		},
-		GetRequestInfo: func(c *fiber.Ctx, requestOption *RequestOption) (*RequestInfo, error) {
+		GetRequestInfo: func(c handlex.Framework, requestOption *RequestOption) (*RequestInfo, error) {
 			log.Println("GetRequestInfo")
 			return &RequestInfo{
 				Token: "my-token",
 			}, nil
 		},
-		OnAfter: func(c *fiber.Ctx, requestOption *RequestOption) error {
+		OnAfter: func(c handlex.Framework, requestOption *RequestOption) error {
 			log.Println("OnAfter")
 			return nil
 		},
@@ -135,7 +176,7 @@ func NewNewApiHandler() fibercore.ApiHandler[RequestInfo, RequestOption] {
 
 type UploadRequest struct {
 	Name  string                `form:"name"`
-	File  *multipart.FileHeader `form:"file"`
+	File1 *multipart.FileHeader `form:"file1"`
 	File2 *multipart.FileHeader `form:"file2"`
 }
 
@@ -147,41 +188,41 @@ func main() {
 	apiHandler := NewNewApiHandler()
 	app := fiber.New()
 	app.Get("/", func(c *fiber.Ctx) error {
-		return apiHandler.Do(c, nil, nil, func(ctx fibercore.Context[RequestInfo]) (interface{}, error) {
+		return apiHandler.Do(&Fiber{Ctx: c}, nil, nil, func(ctx *handlex.Context[RequestInfo]) (interface{}, error) {
 			return "Hi.", nil
 		})
 	})
 
 	app.Get("/custom-status", func(c *fiber.Ctx) error {
-		requestOptions := fibercore.WithRequestOptions(
+		requestOptions := handlex.WithRequestOptions(
 			SuccessStatus(201),
 		)
-		return apiHandler.Do(c, nil, requestOptions, func(ctx fibercore.Context[RequestInfo]) (interface{}, error) {
+		return apiHandler.Do(&Fiber{Ctx: c}, nil, requestOptions, func(ctx *handlex.Context[RequestInfo]) (interface{}, error) {
 			return "Hi.", nil
 		})
 	})
 
 	app.Get("/error", func(c *fiber.Ctx) error {
-		return apiHandler.Do(c, nil, nil, func(ctx fibercore.Context[RequestInfo]) (interface{}, error) {
+		return apiHandler.Do(&Fiber{Ctx: c}, nil, nil, func(ctx *handlex.Context[RequestInfo]) (interface{}, error) {
 			return nil, &AppError{ErrCode: "0001", ErrMessage: "Error"}
 		})
 	})
 
 	app.Post("/simple", func(c *fiber.Ctx) error {
 		request := &SimpleRequest{}
-		return apiHandler.Do(c, request, nil, func(ctx fibercore.Context[RequestInfo]) (interface{}, error) {
-			fmt.Println(request.Name)
+		return apiHandler.Do(&Fiber{Ctx: c}, request, nil, func(ctx *handlex.Context[RequestInfo]) (interface{}, error) {
+			fmt.Println("name:", request.Name)
 			return request.Name, nil
 		})
 	})
 
 	app.Post("/upload", func(c *fiber.Ctx) error {
 		request := &UploadRequest{}
-		return apiHandler.Do(c, request, nil, func(ctx fibercore.Context[RequestInfo]) (interface{}, error) {
-			fmt.Println(request.Name)
-			fmt.Println(request.File.Filename)
-			fmt.Println(request.File2.Filename)
-			return request.File.Filename + ", " + request.File2.Filename, nil
+		return apiHandler.Do(&Fiber{Ctx: c}, request, nil, func(ctx *handlex.Context[RequestInfo]) (interface{}, error) {
+			fmt.Println("name:", request.Name)
+			fmt.Println("file1:", request.File1.Filename)
+			fmt.Println("file2:", request.File2.Filename)
+			return request.File1.Filename + ", " + request.File2.Filename, nil
 		})
 	})
 
@@ -191,11 +232,29 @@ func main() {
 	}
 }
 
-//curl -v -F name=cenery -F file=@api.go -F file2=@utils.go http://localhost:3000/upload
-
-
 ```
 
+## Test
+
+```shell
+curl -v http://localhost:3000/
+```
+
+```shell
+curl -v http://localhost:3000/custom-status
+```
+
+```shell
+curl -v http://localhost:3000/error
+```
+
+```shell
+curl -v -X POST -d '{"name": "Hello"}' http://localhost:3000/simple -H 'Content-Type: application/json'
+```
+
+```shell
+curl -v -F name=cenery -F file1=@api.go -F file2=@utils.go http://localhost:3000/upload
+```
 
 Buy Me a Coffee
 =======

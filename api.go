@@ -1,10 +1,23 @@
-package fibercore
+package handlex
 
 import (
 	"context"
-	"github.com/gofiber/fiber/v2"
+	"io"
+	"mime/multipart"
 	"net/http"
 )
+
+type Framework interface {
+	Method() string
+	UserContext() context.Context
+	SendString(statusCode int, text string) error
+	SendStream(stream io.Reader, size ...int) error
+	JSON(data interface{}) error
+	BodyParser(out interface{}) error
+	FormFile(key string) (*multipart.FileHeader, error)
+	Get(key string, defaultValue ...string) string
+	Status(status int)
+}
 
 type RequestOptions[T any] func(opts *T)
 
@@ -19,31 +32,31 @@ func WithRequestOptions[T any](opts ...RequestOptions[T]) *T {
 	return &opt
 }
 
-type DoFunc[RequestInfo any] func(ctx Context[RequestInfo]) (interface{}, error)
+type DoFunc[RequestInfo any] func(ctx *Context[RequestInfo]) (interface{}, error)
 
-type apiHandler[RequestInfo any, RequestOption any] struct {
-	apiResponseHandler ApiResponseHandler[RequestOption]
-	options            *ApiHandlerOptions[RequestInfo, RequestOption]
+type apiHandler[Fw Framework, RequestInfo any, RequestOption any] struct {
+	apiResponseHandler ApiResponseHandler[Framework, RequestOption]
+	options            *ApiHandlerOptions[Framework, RequestInfo, RequestOption]
 }
 
-type ApiHandlerOptions[RequestInfo any, RequestOption any] struct {
-	OnBefore       func(c *fiber.Ctx, requestOption *RequestOption) error
-	GetRequestInfo func(c *fiber.Ctx, requestOption *RequestOption) (*RequestInfo, error)
-	OnAfter        func(c *fiber.Ctx, requestOption *RequestOption) error
+type ApiHandlerOptions[Fw Framework, RequestInfo any, RequestOption any] struct {
+	OnBefore       func(c Framework, requestOption *RequestOption) error
+	GetRequestInfo func(c Framework, requestOption *RequestOption) (*RequestInfo, error)
+	OnAfter        func(c Framework, requestOption *RequestOption) error
 }
 
-func NewApiHandler[RequestInfo any, RequestOption any](apiResponseHandler ApiResponseHandler[RequestOption], options *ApiHandlerOptions[RequestInfo, RequestOption]) ApiHandler[RequestInfo, RequestOption] {
-	return &apiHandler[RequestInfo, RequestOption]{
+func NewApiHandler[Fw Framework, RequestInfo any, RequestOption any](apiResponseHandler ApiResponseHandler[Framework, RequestOption], options *ApiHandlerOptions[Framework, RequestInfo, RequestOption]) ApiHandler[Framework, RequestInfo, RequestOption] {
+	return &apiHandler[Framework, RequestInfo, RequestOption]{
 		apiResponseHandler: apiResponseHandler,
 		options:            options,
 	}
 }
 
-type ApiHandler[RequestInfo any, RequestOption any] interface {
-	Do(c *fiber.Ctx, requestPtr interface{}, requestOption *RequestOption, doFunc DoFunc[RequestInfo]) error
+type ApiHandler[Fw Framework, RequestInfo any, RequestOption any] interface {
+	Do(c Framework, requestPtr interface{}, requestOption *RequestOption, doFunc DoFunc[RequestInfo]) error
 }
 
-func (h *apiHandler[RequestInfo, RequestOption]) defaultRequestOptionIfNull(requestOption *RequestOption) *RequestOption {
+func (h *apiHandler[Framework, RequestInfo, RequestOption]) defaultRequestOptionIfNull(requestOption *RequestOption) *RequestOption {
 	if requestOption != nil {
 		return requestOption
 	}
@@ -52,7 +65,7 @@ func (h *apiHandler[RequestInfo, RequestOption]) defaultRequestOptionIfNull(requ
 	return &opt
 }
 
-func (h *apiHandler[RequestInfo, RequestOption]) Do(c *fiber.Ctx, requestPtr any, requestOption *RequestOption, doFunc DoFunc[RequestInfo]) error {
+func (h *apiHandler[Framework, RequestInfo, RequestOption]) Do(c Framework, requestPtr any, requestOption *RequestOption, doFunc DoFunc[RequestInfo]) error {
 	requestOption = h.defaultRequestOptionIfNull(requestOption)
 
 	err := h.options.OnBefore(c, requestOption)
@@ -70,7 +83,7 @@ func (h *apiHandler[RequestInfo, RequestOption]) Do(c *fiber.Ctx, requestPtr any
 		return h.apiResponseHandler.ResponseError(c, requestOption, err)
 	}
 
-	data, err := doFunc(Context[RequestInfo]{Context: c.UserContext(), RequestInfo: requestInfo})
+	data, err := doFunc(&Context[RequestInfo]{Context: c.UserContext(), RequestInfo: requestInfo})
 	if err != nil {
 		return h.apiResponseHandler.ResponseError(c, requestOption, err)
 	}
@@ -83,7 +96,7 @@ func (h *apiHandler[RequestInfo, RequestOption]) Do(c *fiber.Ctx, requestPtr any
 	return h.apiResponseHandler.ResponseSuccess(c, requestOption, data)
 }
 
-func (h *apiHandler[RequestInfo, RequestOption]) bodyParserIfRequired(c *fiber.Ctx, requestOption *RequestOption, requestPtr any) (bool, error) {
+func (h *apiHandler[Framework, RequestInfo, RequestOption]) bodyParserIfRequired(c Framework, requestOption *RequestOption, requestPtr any) (bool, error) {
 	if c.Method() == http.MethodGet {
 		return false, nil
 	}
@@ -117,36 +130,36 @@ type Context[RequestInfo any] struct {
 	RequestInfo *RequestInfo
 }
 
-type ApiResponseHandlerOptions[RequestOption any] struct {
-	ResponseSuccess func(c *fiber.Ctx, requestOption *RequestOption, data any) error
-	ResponseError   func(c *fiber.Ctx, requestOption *RequestOption, err error) error
+type ApiResponseHandlerOptions[Fw Framework, RequestOption any] struct {
+	ResponseSuccess func(c Framework, requestOption *RequestOption, data any) error
+	ResponseError   func(c Framework, requestOption *RequestOption, err error) error
 }
 
-type ApiResponseHandler[RequestOption any] interface {
-	ResponseSuccess(c *fiber.Ctx, requestOption *RequestOption, data any) error
-	ResponseError(c *fiber.Ctx, requestOption *RequestOption, err error) error
+type ApiResponseHandler[Fw Framework, RequestOption any] interface {
+	ResponseSuccess(c Framework, requestOption *RequestOption, data any) error
+	ResponseError(c Framework, requestOption *RequestOption, err error) error
 }
 
-type responseHandler[RequestOption any] struct {
-	options *ApiResponseHandlerOptions[RequestOption]
+type responseHandler[Fw Framework, RequestOption any] struct {
+	options *ApiResponseHandlerOptions[Framework, RequestOption]
 }
 
-func (r responseHandler[RequestOption]) ResponseError(c *fiber.Ctx, requestOption *RequestOption, err error) error {
+func (r responseHandler[Framework, RequestOption]) ResponseError(c Framework, requestOption *RequestOption, err error) error {
 	if r.options.ResponseError != nil {
 		return r.options.ResponseError(c, requestOption, err)
 	}
-	return c.Status(500).SendString(err.Error())
+	return c.SendString(500, err.Error())
 }
 
-func (r responseHandler[RequestOption]) ResponseSuccess(c *fiber.Ctx, requestOption *RequestOption, data any) error {
+func (r responseHandler[Framework, RequestOption]) ResponseSuccess(c Framework, requestOption *RequestOption, data any) error {
 	if r.options.ResponseSuccess != nil {
 		return r.options.ResponseSuccess(c, requestOption, data)
 	}
 	return c.JSON(data)
 }
 
-func NewApiResponseHandler[RequestOption any](options *ApiResponseHandlerOptions[RequestOption]) ApiResponseHandler[RequestOption] {
-	return &responseHandler[RequestOption]{
+func NewApiResponseHandler[Fw Framework, RequestOption any](options *ApiResponseHandlerOptions[Framework, RequestOption]) ApiResponseHandler[Framework, RequestOption] {
+	return &responseHandler[Framework, RequestOption]{
 		options: options,
 	}
 }
