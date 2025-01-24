@@ -186,7 +186,7 @@ func NewNewApiHandler() handlex.ApiHandler[handlex.Framework, RequestInfo, Reque
 
 type UploadRequest struct {
 	Name  string                `form:"name"`
-	File1 *multipart.FileHeader `form:"file1"`
+	File1 *multipart.FileHeader `form:"file1" validate:"allow-file-extensions=.go,allow-file-mime-types=text/plain:text/plain2"`
 	File2 *multipart.FileHeader `form:"file2"`
 }
 
