@@ -12,6 +12,7 @@ import (
 	"io"
 	"log"
 	"mime/multipart"
+	"net/http"
 	"time"
 )
 
@@ -89,12 +90,14 @@ func NewApiResponseHandler() fibercore.ApiResponseHandler[RequestOption] {
 					return c.SendStream(streamData.Data)
 				}
 			}
-			return c.JSON(data)
+			return c.Status(http.StatusOK).JSON(data)
 		},
 		ResponseError: func(c *fiber.Ctx, requestOption *RequestOption, err error) error {
 			res := &ErrorResponse{
 				Status:     false,
 				StatusCode: 500,
+				Code:       "E00001",
+				Message:    err.Error(),
 			}
 
 			var appError *AppError
@@ -112,12 +115,21 @@ func NewApiResponseHandler() fibercore.ApiResponseHandler[RequestOption] {
 }
 
 func NewNewApiHandler() fibercore.ApiHandler[RequestInfo, RequestOption] {
+	requestValidator := fibercore.NewRequestValidator()
+	//requestValidator.RegisterValidation("my_validation", MyFunc)
 	return fibercore.NewApiHandler[RequestInfo, RequestOption](NewApiResponseHandler(), &fibercore.ApiHandlerOptions[RequestInfo, RequestOption]{
+		OnValidate: func(c *fiber.Ctx, requestOption *RequestOption, data any) error {
+			if requestOption.EnableValidate {
+				err := requestValidator.Validate(data)
+				if err != nil {
+					return &AppError{ErrCode: "V0001", ErrMessage: err.Error()}
+				}
+				return nil
+			}
+			return nil
+		},
 		OnBefore: func(c *fiber.Ctx, requestOption *RequestOption) error {
 			log.Println("OnBefore")
-			if requestOption.EnableValidate {
-				log.Println("EnableValidate")
-			}
 			return nil
 		},
 		GetRequestInfo: func(c *fiber.Ctx, requestOption *RequestOption) (*RequestInfo, error) {
@@ -135,7 +147,7 @@ func NewNewApiHandler() fibercore.ApiHandler[RequestInfo, RequestOption] {
 
 type UploadRequest struct {
 	Name  string                `form:"name"`
-	File  *multipart.FileHeader `form:"file"`
+	File  *multipart.FileHeader `form:"file" validate:"allow-file-extensions=.go,allow-file-mime-types=text/plain:text/plain2"`
 	File2 *multipart.FileHeader `form:"file2"`
 }
 
@@ -177,11 +189,18 @@ func main() {
 
 	app.Post("/upload", func(c *fiber.Ctx) error {
 		request := &UploadRequest{}
-		return apiHandler.Do(c, request, nil, func(ctx fibercore.Context[RequestInfo]) (interface{}, error) {
+		requestOptions := fibercore.WithRequestOptions(
+			EnableValidate(true),
+		)
+		return apiHandler.Do(c, request, requestOptions, func(ctx fibercore.Context[RequestInfo]) (interface{}, error) {
 			fmt.Println(request.Name)
-			fmt.Println(request.File.Filename)
-			fmt.Println(request.File2.Filename)
-			return request.File.Filename + ", " + request.File2.Filename, nil
+			if request.File != nil {
+				fmt.Println(request.File.Filename)
+			}
+			if request.File2 != nil {
+				fmt.Println(request.File2.Filename)
+			}
+			return "Success", nil
 		})
 	})
 

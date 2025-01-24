@@ -145,14 +145,14 @@ func (r responseHandler[RequestOption]) ResponseError(c *fiber.Ctx, requestOptio
 	if r.options.ResponseError != nil {
 		return r.options.ResponseError(c, requestOption, err)
 	}
-	return c.Status(500).SendString(err.Error())
+	return c.Status(http.StatusInternalServerError).SendString(err.Error())
 }
 
 func (r responseHandler[RequestOption]) ResponseSuccess(c *fiber.Ctx, requestOption *RequestOption, data any) error {
 	if r.options.ResponseSuccess != nil {
 		return r.options.ResponseSuccess(c, requestOption, data)
 	}
-	return c.JSON(data)
+	return c.Status(http.StatusOK).JSON(data)
 }
 
 func NewApiResponseHandler[RequestOption any](options *ApiResponseHandlerOptions[RequestOption]) ApiResponseHandler[RequestOption] {
