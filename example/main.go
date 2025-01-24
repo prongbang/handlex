@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"github.com/dreamph/fibercore"
 	"github.com/gofiber/fiber/v2"
 	errs "github.com/pkg/errors"
@@ -127,8 +128,13 @@ func NewNewApiHandler() fibercore.ApiHandler[RequestInfo, RequestOption] {
 	})
 }
 
-type Upload struct {
-	File multipart.FileHeader `form:"file" multipart:"file"`
+type UploadRequest struct {
+	File  *multipart.FileHeader `form:"file"`
+	File2 *multipart.FileHeader `form:"file2"`
+}
+
+type SimpleRequest struct {
+	Name string `json:"name"`
 }
 
 func main() {
@@ -155,25 +161,20 @@ func main() {
 		})
 	})
 
-	type SimpleRequest struct {
-		Name string `json:"name"`
-	}
-
 	app.Post("/simple", func(c *fiber.Ctx) error {
 		request := &SimpleRequest{}
 		return apiHandler.Do(c, request, nil, func(ctx context.Context, requestInfo *RequestInfo) (interface{}, error) {
+			fmt.Println(request.Name)
 			return request.Name, nil
 		})
 	})
 
-	type Upload struct {
-		File *multipart.FileHeader `form:"file"`
-	}
-
 	app.Post("/upload", func(c *fiber.Ctx) error {
-		request := &Upload{}
+		request := &UploadRequest{}
 		return apiHandler.Do(c, request, nil, func(ctx context.Context, requestInfo *RequestInfo) (interface{}, error) {
-			return request.File.Filename, nil
+			fmt.Println(request.File.Filename)
+			fmt.Println(request.File2.Filename)
+			return request.File.Filename + ", " + request.File2.Filename, nil
 		})
 	})
 
@@ -183,4 +184,4 @@ func main() {
 	}
 }
 
-//curl -v -F name=cenery -F file=@api.go http://localhost:3000/upload
+//curl -v -F name=cenery -F file=@api.go -F file2=@utils.go http://localhost:3000/upload

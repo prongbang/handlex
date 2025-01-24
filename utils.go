@@ -10,41 +10,53 @@ import (
 
 var multipartFieldCache sync.Map
 
+var (
+	multipartFileHeaderType    = reflect.TypeFor[multipart.FileHeader]()
+	multipartFileHeaderPtrType = reflect.TypeFor[*multipart.FileHeader]()
+)
+
+type MultipartFieldCache struct {
+	RequiredMultipart bool
+	Fields            []MultipartField
+}
+
+type MultipartField struct {
+	Name     string // Form field name
+	FieldIdx int    // Index of the field in the struct
+}
+
 func isMultipartFileHeader(field reflect.StructField) bool {
-	if field.Type == reflect.TypeOf((*multipart.FileHeader)(nil)) {
+	if field.Type == multipartFileHeaderType {
 		return true
 	}
-	if field.Type == reflect.TypeOf(multipart.FileHeader{}) {
+	if field.Type == multipartFileHeaderPtrType {
 		return true
 	}
 	return false
 }
 
-func cacheStructFields(targetType reflect.Type) MultipartCache {
+func cacheMultipartFieldCache(targetType reflect.Type) MultipartFieldCache {
 	if cached, ok := multipartFieldCache.Load(targetType); ok {
-		return cached.(MultipartCache)
+		return cached.(MultipartFieldCache)
 	}
 
-	var fields []structField
+	var fields []MultipartField
 	for i := 0; i < targetType.NumField(); i++ {
 		field := targetType.Field(i)
-
-		//fmt.Println(reflect.TypeOf(multipart.FileHeader{}))
-		//fmt.Println(field.Type)
 		if !isMultipartFileHeader(field) {
 			continue
 		}
 
 		formTag := field.Tag.Get("form")
 		if formTag != "" {
-			fields = append(fields, structField{
+			fields = append(fields, MultipartField{
 				Name:     formTag,
 				FieldIdx: i,
 			})
 		}
 	}
 
-	multipartCache := MultipartCache{
+	multipartCache := MultipartFieldCache{
 		RequiredMultipart: len(fields) > 0,
 		Fields:            fields,
 	}
@@ -54,26 +66,16 @@ func cacheStructFields(targetType reflect.Type) MultipartCache {
 	return multipartCache
 }
 
-type MultipartCache struct {
-	RequiredMultipart bool
-	Fields            []structField
-}
-
-type structField struct {
-	Name     string // Form field name
-	FieldIdx int    // Index of the field in the struct
-}
-
 func MultipartBodyParser(c *fiber.Ctx, targetPtr interface{}) error {
 	v := reflect.ValueOf(targetPtr).Elem()
 	t := v.Type()
 
-	multipartCache := cacheStructFields(t)
-	if !multipartCache.RequiredMultipart {
+	cache := cacheMultipartFieldCache(t)
+	if !cache.RequiredMultipart {
 		return nil
 	}
 
-	for _, field := range multipartCache.Fields {
+	for _, field := range cache.Fields {
 		fieldValue := v.Field(field.FieldIdx)
 		file, err := c.FormFile(field.Name)
 		if err != nil {
@@ -86,6 +88,6 @@ func MultipartBodyParser(c *fiber.Ctx, targetPtr interface{}) error {
 }
 
 func IsMultipartForm(c *fiber.Ctx) bool {
-	contentType := c.Get("Content-Type")
-	return strings.Contains(contentType, "multipart/form-data")
+	contentType := c.Get(fiber.HeaderContentType)
+	return strings.Contains(contentType, fiber.MIMEMultipartForm)
 }
