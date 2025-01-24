@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/dreamph/handlex"
+	"github.com/gofiber/fiber/v2"
 	errs "github.com/pkg/errors"
 	"io"
 	"log"
@@ -135,6 +136,8 @@ func NewApiResponseHandler() handlex.ApiResponseHandler[handlex.Framework, Reque
 			res := &ErrorResponse{
 				Status:     false,
 				StatusCode: 500,
+				Code:       "E00001",
+				Message:    err.Error(),
 			}
 
 			var appError *AppError
@@ -152,8 +155,19 @@ func NewApiResponseHandler() handlex.ApiResponseHandler[handlex.Framework, Reque
 }
 
 func NewNewApiHandler() handlex.ApiHandler[handlex.Framework, RequestInfo, RequestOption] {
+	requestValidator := handlex.NewRequestValidator()
 	responseHandler := NewApiResponseHandler()
 	return handlex.NewApiHandler[handlex.Framework, RequestInfo, RequestOption](responseHandler, &handlex.ApiHandlerOptions[handlex.Framework, RequestInfo, RequestOption]{
+		OnValidate: func(c handlex.Framework, requestOption *RequestOption, data any) error {
+			if requestOption.EnableValidate {
+				err := requestValidator.Validate(data)
+				if err != nil {
+					return &AppError{ErrCode: "V0001", ErrMessage: err.Error()}
+				}
+				return nil
+			}
+			return nil
+		},
 		OnBefore: func(c handlex.Framework, requestOption *RequestOption) error {
 			log.Println("OnBefore")
 			if requestOption.EnableValidate {
@@ -211,18 +225,21 @@ func main() {
 	app.Post("/simple", func(c *fiber.Ctx) error {
 		request := &SimpleRequest{}
 		return apiHandler.Do(&Fiber{Ctx: c}, request, nil, func(ctx *handlex.Context[RequestInfo]) (interface{}, error) {
-			fmt.Println("name:", request.Name)
+			fmt.Println(request.Name)
 			return request.Name, nil
 		})
 	})
 
 	app.Post("/upload", func(c *fiber.Ctx) error {
 		request := &UploadRequest{}
-		return apiHandler.Do(&Fiber{Ctx: c}, request, nil, func(ctx *handlex.Context[RequestInfo]) (interface{}, error) {
+		requestOptions := handlex.WithRequestOptions(
+			EnableValidate(true),
+		)
+		return apiHandler.Do(&Fiber{Ctx: c}, request, requestOptions, func(ctx *handlex.Context[RequestInfo]) (interface{}, error) {
 			fmt.Println("name:", request.Name)
 			fmt.Println("file1:", request.File1.Filename)
 			fmt.Println("file2:", request.File2.Filename)
-			return request.File1.Filename + ", " + request.File2.Filename, nil
+			return "Success", nil
 		})
 	})
 
