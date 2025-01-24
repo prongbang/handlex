@@ -133,6 +133,7 @@ func NewNewApiHandler() fibercore.ApiHandler[RequestInfo, RequestOption] {
 }
 
 type UploadRequest struct {
+	Name  string                `form:"name"`
 	File  *multipart.FileHeader `form:"file"`
 	File2 *multipart.FileHeader `form:"file2"`
 }
@@ -176,6 +177,7 @@ func main() {
 	app.Post("/upload", func(c *fiber.Ctx) error {
 		request := &UploadRequest{}
 		return apiHandler.Do(c, request, nil, func(ctx context.Context, requestInfo *RequestInfo) (interface{}, error) {
+			fmt.Println(request.Name)
 			fmt.Println(request.File.Filename)
 			fmt.Println(request.File2.Filename)
 			return request.File.Filename + ", " + request.File2.Filename, nil
@@ -189,6 +191,7 @@ func main() {
 }
 
 //curl -v -F name=cenery -F file=@api.go -F file2=@utils.go http://localhost:3000/upload
+
 
 ```
 
