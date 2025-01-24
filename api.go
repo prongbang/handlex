@@ -19,7 +19,7 @@ func WithRequestOptions[T any](opts ...RequestOptions[T]) *T {
 	return &opt
 }
 
-type DoFunc[RequestInfo any] func(ctx context.Context, requestInfo *RequestInfo) (interface{}, error)
+type DoFunc[RequestInfo any] func(ctx Context[RequestInfo]) (interface{}, error)
 
 type apiHandler[RequestInfo any, RequestOption any] struct {
 	apiResponseHandler ApiResponseHandler[RequestOption]
@@ -51,6 +51,7 @@ func (h *apiHandler[RequestInfo, RequestOption]) defaultRequestOptionIfNull(requ
 	var opt RequestOption
 	return &opt
 }
+
 func (h *apiHandler[RequestInfo, RequestOption]) Do(c *fiber.Ctx, requestPtr any, requestOption *RequestOption, doFunc DoFunc[RequestInfo]) error {
 	requestOption = h.defaultRequestOptionIfNull(requestOption)
 
@@ -69,7 +70,7 @@ func (h *apiHandler[RequestInfo, RequestOption]) Do(c *fiber.Ctx, requestPtr any
 		return h.apiResponseHandler.ResponseError(c, requestOption, err)
 	}
 
-	data, err := doFunc(c.UserContext(), requestInfo)
+	data, err := doFunc(Context[RequestInfo]{Context: c.UserContext(), RequestInfo: requestInfo})
 	if err != nil {
 		return h.apiResponseHandler.ResponseError(c, requestOption, err)
 	}
@@ -109,6 +110,11 @@ func (h *apiHandler[RequestInfo, RequestOption]) bodyParserIfRequired(c *fiber.C
 type ResponseData struct {
 	Data interface{}
 	Err  error
+}
+
+type Context[RequestInfo any] struct {
+	Context     context.Context
+	RequestInfo *RequestInfo
 }
 
 type ApiResponseHandlerOptions[RequestOption any] struct {

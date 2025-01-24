@@ -1,7 +1,6 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"github.com/dreamph/fibercore"
 	"github.com/gofiber/fiber/v2"
@@ -119,7 +118,9 @@ func NewNewApiHandler() fibercore.ApiHandler[RequestInfo, RequestOption] {
 		},
 		GetRequestInfo: func(c *fiber.Ctx, requestOption *RequestOption) (*RequestInfo, error) {
 			log.Println("GetRequestInfo")
-			return &RequestInfo{}, nil
+			return &RequestInfo{
+				Token: "my-token",
+			}, nil
 		},
 		OnAfter: func(c *fiber.Ctx, requestOption *RequestOption) error {
 			log.Println("OnAfter")
@@ -142,7 +143,7 @@ func main() {
 	apiHandler := NewNewApiHandler()
 	app := fiber.New()
 	app.Get("/", func(c *fiber.Ctx) error {
-		return apiHandler.Do(c, nil, nil, func(ctx context.Context, requestInfo *RequestInfo) (interface{}, error) {
+		return apiHandler.Do(c, nil, nil, func(ctx fibercore.Context[RequestInfo]) (interface{}, error) {
 			return "Hi.", nil
 		})
 	})
@@ -151,20 +152,20 @@ func main() {
 		requestOptions := fibercore.WithRequestOptions(
 			SuccessStatus(201),
 		)
-		return apiHandler.Do(c, nil, requestOptions, func(ctx context.Context, requestInfo *RequestInfo) (interface{}, error) {
+		return apiHandler.Do(c, nil, requestOptions, func(ctx fibercore.Context[RequestInfo]) (interface{}, error) {
 			return "Hi.", nil
 		})
 	})
 
 	app.Get("/error", func(c *fiber.Ctx) error {
-		return apiHandler.Do(c, nil, nil, func(ctx context.Context, requestInfo *RequestInfo) (interface{}, error) {
+		return apiHandler.Do(c, nil, nil, func(ctx fibercore.Context[RequestInfo]) (interface{}, error) {
 			return nil, &AppError{ErrCode: "0001", ErrMessage: "Error"}
 		})
 	})
 
 	app.Post("/simple", func(c *fiber.Ctx) error {
 		request := &SimpleRequest{}
-		return apiHandler.Do(c, request, nil, func(ctx context.Context, requestInfo *RequestInfo) (interface{}, error) {
+		return apiHandler.Do(c, request, nil, func(ctx fibercore.Context[RequestInfo]) (interface{}, error) {
 			fmt.Println(request.Name)
 			return request.Name, nil
 		})
@@ -172,7 +173,7 @@ func main() {
 
 	app.Post("/upload", func(c *fiber.Ctx) error {
 		request := &UploadRequest{}
-		return apiHandler.Do(c, request, nil, func(ctx context.Context, requestInfo *RequestInfo) (interface{}, error) {
+		return apiHandler.Do(c, request, nil, func(ctx fibercore.Context[RequestInfo]) (interface{}, error) {
 			fmt.Println(request.Name)
 			fmt.Println(request.File.Filename)
 			fmt.Println(request.File2.Filename)
