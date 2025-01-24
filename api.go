@@ -27,12 +27,15 @@ type apiHandler[RequestInfo any, RequestOption any] struct {
 }
 
 type ApiHandlerOptions[RequestInfo any, RequestOption any] struct {
-	OnBefore       func(c *fiber.Ctx, requestOption *RequestOption) error
-	GetRequestInfo func(c *fiber.Ctx, requestOption *RequestOption) (*RequestInfo, error)
-	OnAfter        func(c *fiber.Ctx, requestOption *RequestOption) error
+	RequestValidator RequestValidator
+	OnValidate       func(c *fiber.Ctx, requestOption *RequestOption, data any) error
+	OnBefore         func(c *fiber.Ctx, requestOption *RequestOption) error
+	GetRequestInfo   func(c *fiber.Ctx, requestOption *RequestOption) (*RequestInfo, error)
+	OnAfter          func(c *fiber.Ctx, requestOption *RequestOption) error
 }
 
 func NewApiHandler[RequestInfo any, RequestOption any](apiResponseHandler ApiResponseHandler[RequestOption], options *ApiHandlerOptions[RequestInfo, RequestOption]) ApiHandler[RequestInfo, RequestOption] {
+
 	return &apiHandler[RequestInfo, RequestOption]{
 		apiResponseHandler: apiResponseHandler,
 		options:            options,
@@ -63,6 +66,13 @@ func (h *apiHandler[RequestInfo, RequestOption]) Do(c *fiber.Ctx, requestPtr any
 	_, err = h.bodyParserIfRequired(c, requestOption, requestPtr)
 	if err != nil {
 		return h.apiResponseHandler.ResponseError(c, requestOption, err)
+	}
+
+	if h.options.OnValidate != nil {
+		err = h.options.OnValidate(c, requestOption, requestPtr)
+		if err != nil {
+			return h.apiResponseHandler.ResponseError(c, requestOption, err)
+		}
 	}
 
 	requestInfo, err := h.options.GetRequestInfo(c, requestOption)

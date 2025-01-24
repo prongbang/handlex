@@ -3,6 +3,7 @@ package fibercore
 import (
 	"github.com/gofiber/fiber/v2"
 	"mime/multipart"
+	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -81,4 +82,26 @@ func MultipartBodyParser(c *fiber.Ctx, targetPtr interface{}) error {
 
 func IsMultipartForm(c *fiber.Ctx) bool {
 	return strings.Contains(c.Get(fiber.HeaderContentType), fiber.MIMEMultipartForm)
+}
+
+func GetFileMimeType(fileHeader *multipart.FileHeader) (string, error) {
+	file, err := fileHeader.Open()
+	if err != nil {
+		return "", err
+	}
+	defer func(file multipart.File) {
+		_ = file.Close()
+	}(file)
+
+	buffer := make([]byte, 512)
+	_, err = file.Read(buffer)
+	if err != nil {
+		return "", err
+	}
+
+	mimeType := http.DetectContentType(buffer)
+	if strings.Contains(mimeType, ";") {
+		return strings.Split(mimeType, ";")[0], nil
+	}
+	return mimeType, nil
 }
