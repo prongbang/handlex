@@ -2,6 +2,7 @@ package handlex
 
 import (
 	"mime/multipart"
+	"net/http"
 	"reflect"
 	"strings"
 	"sync"
@@ -99,4 +100,26 @@ func IsMultipartForm[FrameworkContext Framework](c FrameworkContext) bool {
 
 func IsOctetStream[FrameworkContext Framework](c FrameworkContext) bool {
 	return strings.Contains(c.Get(HeaderContentType), MIMEOctetStream)
+}
+
+func GetFileMimeType(fileHeader *multipart.FileHeader) (string, error) {
+	file, err := fileHeader.Open()
+	if err != nil {
+		return "", err
+	}
+	defer func(file multipart.File) {
+		_ = file.Close()
+	}(file)
+
+	buffer := make([]byte, 512)
+	_, err = file.Read(buffer)
+	if err != nil {
+		return "", err
+	}
+
+	mimeType := http.DetectContentType(buffer)
+	if strings.Contains(mimeType, ";") {
+		return strings.Split(mimeType, ";")[0], nil
+	}
+	return mimeType, nil
 }

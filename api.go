@@ -40,13 +40,15 @@ type apiHandler[Fw Framework, RequestInfo any, RequestOption any] struct {
 }
 
 type ApiHandlerOptions[Fw Framework, RequestInfo any, RequestOption any] struct {
-	OnBefore       func(c Framework, requestOption *RequestOption) error
-	GetRequestInfo func(c Framework, requestOption *RequestOption) (*RequestInfo, error)
-	OnAfter        func(c Framework, requestOption *RequestOption) error
+	RequestValidator RequestValidator
+	OnValidate       func(c Framework, requestOption *RequestOption, data any) error
+	OnBefore         func(c Framework, requestOption *RequestOption) error
+	GetRequestInfo   func(c Framework, requestOption *RequestOption) (*RequestInfo, error)
+	OnAfter          func(c Framework, requestOption *RequestOption) error
 }
 
 func NewApiHandler[Fw Framework, RequestInfo any, RequestOption any](apiResponseHandler ApiResponseHandler[Framework, RequestOption], options *ApiHandlerOptions[Framework, RequestInfo, RequestOption]) ApiHandler[Framework, RequestInfo, RequestOption] {
-	return &apiHandler[Framework, RequestInfo, RequestOption]{
+	return &apiHandler[Fw, RequestInfo, RequestOption]{
 		apiResponseHandler: apiResponseHandler,
 		options:            options,
 	}
@@ -76,6 +78,13 @@ func (h *apiHandler[Framework, RequestInfo, RequestOption]) Do(c Framework, requ
 	_, err = h.bodyParserIfRequired(c, requestOption, requestPtr)
 	if err != nil {
 		return h.apiResponseHandler.ResponseError(c, requestOption, err)
+	}
+
+	if h.options.OnValidate != nil {
+		err = h.options.OnValidate(c, requestOption, requestPtr)
+		if err != nil {
+			return h.apiResponseHandler.ResponseError(c, requestOption, err)
+		}
 	}
 
 	requestInfo, err := h.options.GetRequestInfo(c, requestOption)
@@ -148,13 +157,14 @@ func (r responseHandler[Framework, RequestOption]) ResponseError(c Framework, re
 	if r.options.ResponseError != nil {
 		return r.options.ResponseError(c, requestOption, err)
 	}
-	return c.SendString(500, err.Error())
+	return c.SendString(http.StatusInternalServerError, err.Error())
 }
 
 func (r responseHandler[Framework, RequestOption]) ResponseSuccess(c Framework, requestOption *RequestOption, data any) error {
 	if r.options.ResponseSuccess != nil {
 		return r.options.ResponseSuccess(c, requestOption, data)
 	}
+	c.Status(http.StatusOK)
 	return c.JSON(data)
 }
 
