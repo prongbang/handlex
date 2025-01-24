@@ -8,7 +8,9 @@ import (
 	"sync"
 )
 
-var multipartFieldCache sync.Map
+var (
+	multipartFieldCache sync.Map
+)
 
 var (
 	multipartFileHeaderType    = reflect.TypeFor[multipart.FileHeader]()
@@ -25,14 +27,8 @@ type MultipartField struct {
 	FieldIdx int    // Index of the field in the struct
 }
 
-func isMultipartFileHeader(field reflect.StructField) bool {
-	if field.Type == multipartFileHeaderType {
-		return true
-	}
-	if field.Type == multipartFileHeaderPtrType {
-		return true
-	}
-	return false
+func isMultipartFileHeaderType(field reflect.StructField) bool {
+	return field.Type == multipartFileHeaderType || field.Type == multipartFileHeaderPtrType
 }
 
 func cacheMultipartFieldCache(targetType reflect.Type) MultipartFieldCache {
@@ -40,30 +36,27 @@ func cacheMultipartFieldCache(targetType reflect.Type) MultipartFieldCache {
 		return cached.(MultipartFieldCache)
 	}
 
-	var fields []MultipartField
+	fields := make([]MultipartField, 0)
 	for i := 0; i < targetType.NumField(); i++ {
 		field := targetType.Field(i)
-		if !isMultipartFileHeader(field) {
-			continue
-		}
-
-		formTag := field.Tag.Get("form")
-		if formTag != "" {
-			fields = append(fields, MultipartField{
-				Name:     formTag,
-				FieldIdx: i,
-			})
+		if isMultipartFileHeaderType(field) {
+			formTag := field.Tag.Get("form")
+			if formTag != "" {
+				fields = append(fields, MultipartField{
+					Name:     formTag,
+					FieldIdx: i,
+				})
+			}
 		}
 	}
 
-	multipartCache := MultipartFieldCache{
+	cache := MultipartFieldCache{
 		RequiredMultipart: len(fields) > 0,
 		Fields:            fields,
 	}
 
-	multipartFieldCache.Store(targetType, multipartCache)
-
-	return multipartCache
+	multipartFieldCache.Store(targetType, cache)
+	return cache
 }
 
 func MultipartBodyParser(c *fiber.Ctx, targetPtr interface{}) error {
@@ -76,18 +69,16 @@ func MultipartBodyParser(c *fiber.Ctx, targetPtr interface{}) error {
 	}
 
 	for _, field := range cache.Fields {
-		fieldValue := v.Field(field.FieldIdx)
 		file, err := c.FormFile(field.Name)
 		if err != nil {
 			return err
 		}
-		fieldValue.Set(reflect.ValueOf(file))
+		v.Field(field.FieldIdx).Set(reflect.ValueOf(file))
 	}
 
 	return nil
 }
 
 func IsMultipartForm(c *fiber.Ctx) bool {
-	contentType := c.Get(fiber.HeaderContentType)
-	return strings.Contains(contentType, fiber.MIMEMultipartForm)
+	return strings.Contains(c.Get(fiber.HeaderContentType), fiber.MIMEMultipartForm)
 }
